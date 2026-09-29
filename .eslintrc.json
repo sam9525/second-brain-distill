@@ -1,0 +1,6 @@
+{
+  "extends": ["eslint:recommended", "prettier"],
+  "rules": {
+    "eol-last": ["error", "never"]
+  }
+}

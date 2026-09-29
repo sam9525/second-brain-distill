@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+
+# Runtime state
+.ingest-watermark
+
+# GitNexus index
+.gitnexus/
+
+# CLAUDE
+CLAUDE.md
+.claude/
+
+# ANTIGRAVITY
+AGENTS.md
+
+# Docs
+docs/
+CONTEXT.md
+
+# Superpowers
+.superpowers/

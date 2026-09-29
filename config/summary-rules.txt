@@ -1,0 +1,63 @@
+In the Claude Code block above, each session is `### <project-folder>  <id>  (<n> msgs)`; the folder name is the working-dir path with separators as dashes (e.g. `D--data-Program-FinPulse-AI` = `D:\data\Program\FinPulse-AI`). Lines are tagged `you:` (me), `claude:` (assistant), `→ task:` (sub-agent dispatch), `↳ result:` (sub-agent outcome). Tool noise (file dumps, diffs, thinking) is already stripped.
+
+Summarize from these CONVERSATIONS — what I asked for, decisions and tradeoffs, what was built/fixed/explored, problems hit and how they resolved, and anything tried then abandoned. For sub-agents use the `→ task`/`↳ result` lines (intent + outcome) only. Exclude any automated ingest session itself (its prompt begins "Incremental daily ingest").
+
+OUTPUT FORMAT — write the note exactly like this, frontmatter included:
+
+---
+tags: [daily-note, <project-tag>, ...]
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+type: daily
+---
+
+## Projects
+
+### <Project Name>
+- ...
+
+## Insights & Decisions
+- ...
+
+## Open Threads
+- ...
+
+- FRONTMATTER IS MANDATORY. Write it as part of creating the note, never as an afterthought. `created` and `updated` are the note's own date.
+- `tags` is `daily-note` plus ONE PROJECT TAG PER PROJECT the note covers — e.g. `tags: [daily-note, jarvis, memory-pipeline]`. Reuse the project's existing tag so the day clusters with its wiki pages. Current vocabulary: `jarvis` (JARVIS), `finpulse` (FinPulse-AI), `memory-pipeline` (this Obsidian vault / memory system), `master-claude`, `app-launcher`, `ai-judge-image`, `personal-notes`, `video-hub-app`. Coin a new lowercase-hyphenated tag only for a genuinely new project; never invent a variant of one that already has a tag.
+- NO `# Daily Note — DATE` HEADING. The frontmatter block is followed directly by `## Projects`. The filename already carries the date.
+- `## Projects` — one `###` subsection per project worked on, named for the project (not its full directory path). Within a project, group related bullets under short **bold sub-titles** (by phase, feature, or work stream — e.g. `**Phase 2.2 — AI Analysis Scheduler**`, `**Sparklines**`) when it spans multiple distinct work streams; a single-stream project needs no sub-titles. Each group holds 2-6 bullets, one work item, decision, or outcome per bullet — bullets, never paragraphs. Omit a project with no meaningful activity.
+- `## Insights & Decisions` — a flat list of the day's durable lessons, gotchas, and design decisions worth remembering on their own, independent of which project they came from. 3-6 bullets, and fewer is fine — an empty-ish day gets 1-2, not 5 padded out to fill the quota. See THE INSIGHT BAR below.
+- `## Open Threads` — work that is genuinely unfinished, each thread naming what is unfinished AND what would finish it. If a bullet can't name both, cut it. Not a copy of a plan's remaining tasks. Include the section even when empty ("- None carried forward.").
+
+THE INSIGHT BAR — an insight earns its bullet ONLY if it is one of:
+- a fact about a specific tool, library, provider, API, or platform I use (its actual behavior, limits, quirks, or required config);
+- a mistake I actually made, with what caused it;
+- a decision made with its reason and the tradeoff accepted;
+- a workflow/process observation about how I work with agents, reviews, or this pipeline.
+CUT IT if it would appear in a general engineering textbook, or if it reads as advice that would be equally true on any project in any language. Those are not insights, they are filler.
+- CUT: "DB sessions should close before any blocking operation." "Thread shutdown via a timed-wait event beats a sleep loop." "Zero is a valid value, so avoid falsy checks." "Batch N calls into one when consumers share a data need."
+- KEEP: "Free-tier Alpaca SIP is 15-min delayed; IEX is realtime but covers ~2-3% of volume." "Pipe operators silently mask non-zero exit codes, so a clean baseline established through a pipe can be wrong." "Windows caps a command line at ~32KB, surfacing as a cryptic 'filename too long' when spawning claude.exe."
+Do not restate an insight I already recorded on an earlier day unless the new day genuinely sharpens or contradicts it.
+
+LENGTH & ALTITUDE — this is the part that matters most:
+- Total note: 350-650 words.
+- ONE SENTENCE PER BULLET. A bullet is a single sentence, never a paragraph — if it runs past one sentence or one line, split it into two bullets or cut it.
+- Capture WHAT and WHY (intent, decision, tradeoff, outcome). Never HOW.
+- BANNED: file paths, line numbers, function/variable names, test counts, commit counts, plan task names or numbers, bar/row/node counts, model IDs, timestamps, exact values. If a bullet contains one of these, rewrite it at a higher level or cut it.
+- A short commit hash in parentheses at the end of a bullet is OK as an anchor — but ONLY the hash, never paired with line numbers or function names.
+- Test: each bullet should still read true and useful a month from now without the code in front of me. "Fixed sparkline gaps caused by unpaginated API results (6a13f53)" — keep. "Followed next_page_token instead of range(20) at line 198" — cut.
+
+PLAN & PROCESS NOISE — cut from BOTH sections, not just the insights:
+- Enumerating an implementation plan's tasks ("nine tasks: setting, wake-word reducer, speak, ..."), naming task numbers ("stopped cleanly at the end of Task 6"), or listing the remaining tasks as open threads. The plan file already holds all of that; record only what the work produced or decided.
+- Tallies of commits, branches, or tests ("landed 17 commits", "29-commit branch, 718 tests green"). Git already stores them. A single commit hash as an anchor is still fine.
+- Narrating the assistant's own session: which review procedure was run, subagents dispatched or replaced, sessions interrupted or resumed, usage limits hit, snippets handed over, or questions answered that produced no artifact.
+- A project subsection for a session where nothing was asked or built ("message was interrupted before any request was made"). Omit the project entirely, and do not file an open thread for it.
+- The workflow/process insight allowed by THE INSIGHT BAR stays allowed, but only as a durable fact about the tooling that changes how I work next time — never as a play-by-play of this session.
+  - KEEP: "Reviewer subagents stall silently rather than erroring, so replace them instead of re-prompting."
+  - CUT: "Reviewer subagents repeatedly went idle without delivering a report, requiring several replacements."
+
+NO RE-NARRATION — one session, one note, one telling:
+- Before writing, check whether the sessions in this run are already covered by an existing note in `memory/raw/`. If they are, write nothing rather than producing a second summary of the same session under a new date. A backfill or re-run must not duplicate a day that was already summarized.
+- When a session continues work already recorded on an earlier day, record ONLY what is new: what was built, decided, or learned since. Do not re-tell the settled context — the exploration that led to the pick, the alternatives already rejected, the rationale already written down. Yesterday's note holds it and is one hop away.
+- Never restate a decision that has not changed. Restate one ONLY when it genuinely changed, was reversed, or was resolved from an open question — and then say so explicitly ("reversed yesterday's call to X because Y"), so the note records the delta, not the decision a second time.
+- A re-narration loses precision even when it looks harmless: "caught bad subagent claims twice" becoming "caught them multiple times" the next day is a fact degrading on each retelling. This is why the rule is delete, not reword.
