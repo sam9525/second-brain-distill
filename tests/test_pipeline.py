@@ -8,7 +8,13 @@ from distiller.settings import ConfigError, Settings, load_settings
 
 
 def make_settings(vault: Path) -> Settings:
-    return Settings(vault=vault, model="sonnet", schedule_time="23:50", project_dirs=())
+    return Settings(
+        vault=vault,
+        model="sonnet",
+        schedule_time="23:50",
+        project_dirs=(),
+        device_suffix="",
+    )
 
 
 def test_extractor_args_share_lookback_and_convert_claude_to_utc():
@@ -53,10 +59,15 @@ def test_watermark_advances_only_on_clean_exit_with_sentinel(
 
 def test_run_prompt_template_fills_every_placeholder():
     prompt = pipeline.render(
-        "run-prompt.txt", date="2026-09-29", claude_out="C-OUT", anti_out="A-OUT"
+        "run-prompt.txt",
+        date="2026-09-29",
+        note_name="2026-09-29-Mac",
+        claude_out="C-OUT",
+        anti_out="A-OUT",
     )
     assert "C-OUT" in prompt and "A-OUT" in prompt
-    assert "memory/Inbox/2026-09-29.md" in prompt
+    assert "memory/Inbox/2026-09-29-Mac.md" in prompt
+    assert "memory/Inbox/2026-09-29.md" not in prompt
     assert pipeline.SENTINEL in prompt
 
 

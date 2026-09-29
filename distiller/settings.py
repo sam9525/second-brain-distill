@@ -5,6 +5,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = REPO_ROOT / "config.toml"
+SUFFIX_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 
 
 class ConfigError(Exception):
@@ -17,6 +18,12 @@ class Settings:
     model: str
     schedule_time: str
     project_dirs: tuple[str, ...]
+    device_suffix: str  # "" on the main device
+
+    def note_name(self, date: str) -> str:
+        # per-device names keep devices sharing one git-synced vault from
+        # writing the same daily-note file
+        return f"{date}-{self.device_suffix}" if self.device_suffix else date
 
 
 def load_settings(path: Path = CONFIG_FILE) -> Settings:
@@ -38,6 +45,17 @@ def load_settings(path: Path = CONFIG_FILE) -> Settings:
     if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", schedule_time):
         raise ConfigError(f"{path.name}: schedule_time must be HH:MM (24h).")
 
+    if "device_suffix" not in raw:
+        raise ConfigError(
+            f"{path.name}: device_suffix not set - run `python distill.py "
+            "install-schedule` in a terminal once to choose it."
+        )
+    device_suffix = raw["device_suffix"]
+    if device_suffix and not SUFFIX_PATTERN.fullmatch(device_suffix):
+        raise ConfigError(
+            f"{path.name}: device_suffix may only use letters, digits, - and _."
+        )
+
     return Settings(
         vault=vault,
         model=raw.get("model", "sonnet"),
@@ -45,4 +63,5 @@ def load_settings(path: Path = CONFIG_FILE) -> Settings:
         project_dirs=tuple(
             str(Path(p).expanduser()) for p in raw.get("project_dirs", [])
         ),
+        device_suffix=device_suffix,
     )

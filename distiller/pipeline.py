@@ -126,7 +126,11 @@ def run(
     )
 
     prompt = render(
-        "run-prompt.txt", date=date, claude_out=claude_out, anti_out=anti_out
+        "run-prompt.txt",
+        date=date,
+        note_name=settings.note_name(date),
+        claude_out=claude_out,
+        anti_out=anti_out,
     )
     print(f"Daily note task - {date} (since {local_iso(window_start)})")
     exit_code, saw_sentinel = call_claude(prompt, settings)
@@ -167,7 +171,7 @@ def backfill(settings: Settings, dates: list[dt.date]) -> int:
             date=date,
             claude_out=claude_out,
             anti_out=anti_out,
-            out_file=str(BACKFILL_DIR / f"{date}.md"),
+            out_file=str(BACKFILL_DIR / f"{settings.note_name(date)}.md"),
         )
         print(f"Summarizing {date} ...")
         exit_code, _ = call_claude(prompt, settings)

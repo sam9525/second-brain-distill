@@ -13,7 +13,10 @@ import sys
 if sys.version_info < (3, 11):
     sys.exit("second-brain-distill needs Python 3.11+ (for tomllib).")
 
+import tomllib  # noqa: E402
+
 from distiller import pipeline, schedule  # noqa: E402
+from distiller.device import ensure_device_suffix  # noqa: E402
 from distiller.settings import ConfigError, load_settings  # noqa: E402
 
 
@@ -52,8 +55,9 @@ def main() -> int:
 
     args = parser.parse_args()
     try:
+        ensure_device_suffix()
         settings = load_settings()
-    except ConfigError as err:
+    except (ConfigError, tomllib.TOMLDecodeError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
 

@@ -14,3 +14,6 @@ schedule_time = "23:50"
 # Folders where you keep projects. Antigravity sessions are labelled with the
 # first path under one of these. Leave empty to use the first non-tooling path.
 project_dirs = ["~/code"]
+
+# device_suffix is added here by the first interactive run on each device;
+# don't copy it between devices.
