@@ -1,0 +1,21 @@
+Incremental daily ingest. Process ONLY work done after the last successful run. Both extractors have ALREADY been run for you and their output is included verbatim below — do NOT re-run them and do NOT read raw transcripts.
+
+=== Claude Code sessions ($date) ===
+$claude_out
+=== end Claude Code sessions ===
+
+=== Antigravity sessions ($date) ===
+$anti_out
+=== end Antigravity sessions ===
+
+$rules
+
+If BOTH sections above are empty or report no sessions, there is nothing to summarize: do NOT create or modify memory/Inbox/$date.md, skip straight to the ingest step below, and report "no new conversations". Otherwise summarize what I did split by project, and create or update the daily note at memory/Inbox/$date.md (append without duplicating existing bullets if it already exists).
+
+Finally, ingest every domain by processing each domain's Inbox/. For each domain, check its Inbox/ for staged files and run that domain's ingest workflow (per its CLAUDE.md) on whatever is there. If a domain's Inbox/ is empty, skip it. Check all three Inbox folders independently, even if only one has files.
+
+IMPORTANT: writing the daily note to memory/Inbox/$date.md above is staging it, NOT ingesting it — they are separate steps. memory/Inbox/ almost always has at least the daily note you just wrote (or an already-existing one), so the memory domain is virtually never "empty" and must go through its own ingest workflow every run: move memory/Inbox/$date.md to memory/raw/, synthesize into memory/wiki/, ingesting the WHOLE daily note including its "## Insights & Decisions" section (project-specific insights go into the matching project concept page; insights that belong to no project go into a topic concept page per memory/CLAUDE.md - never read-and-dropped just because they aren't about a project), and update memory_index.md and memory_log.md. Do this even when Tech/ and personal-notes/ Inboxes are both empty — memory's ingest does not depend on the other two domains having anything to process.
+
+When you have finished ALL of the above — the daily note AND ingest for every domain's Inbox — print this exact line as your very last line of output, on its own:
+INGEST_COMPLETE
+Do not print that line if you stop for any reason before finishing everything above.

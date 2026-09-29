@@ -1,0 +1,16 @@
+# Copy to config.toml and edit. config.toml is gitignored.
+
+# Obsidian vault that daily notes are written into. `claude` runs with this as
+# its working directory, so the paths in config/run-prompt.txt are relative to it.
+vault = "~/Documents/Obsidian"
+
+# Model passed to `claude -p --model`.
+model = "sonnet"
+
+# Daily run time (24h, local) used by `python distill.py install-schedule`.
+# Re-run install-schedule after changing it.
+schedule_time = "23:50"
+
+# Folders where you keep projects. Antigravity sessions are labelled with the
+# first path under one of these. Leave empty to use the first non-tooling path.
+project_dirs = ["~/code"]

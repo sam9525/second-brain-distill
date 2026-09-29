@@ -44,6 +44,24 @@ import sys
 
 CONV_DIR = os.path.expanduser(r"~/.gemini/antigravity/conversations")
 
+# Windows drive paths (C:\ or d:/) and macOS/Linux home paths (/Users/, /home/)
+# the POSIX lookbehind keeps relative paths like "tests/home/x.ts" from matching
+ABS_PATH_START = re.compile(r"[A-Za-z]:[\\/]|(?<![\w.\-/])/(?:Users|home)/")
+# lookbehinds skip "file:///d:/..." URIs (they carry trailing protobuf bytes)
+ABS_PATH = re.compile(
+    r"(?:(?<![A-Za-z/])[A-Za-z]:[\\/]|(?<![\w.\-/:])/(?:Users|home)/)[\w\\/ .\-]+"
+)
+# paths into the agent's own state or installed tooling say nothing about the
+# project being worked on, so they never count as the session's workspace
+TOOLING_PATH_MARKERS = (
+    ".gemini",
+    "AppData",
+    "node_modules",
+    "Library",
+    "site-packages",
+    "Program Files",
+)
+
 
 def runs(b, minlen=5):
     """Yield printable-ASCII runs of at least `minlen` chars from a blob."""
@@ -174,7 +192,7 @@ def conversation(rows, minlen=40):
                     continue
                 if '":' in s:  # JSON fragment
                     continue
-                if re.search(r"[A-Za-z]:[\\/]", s):  # windows path
+                if ABS_PATH_START.search(s):  # file path, not prose
                     continue
                 if len(s.split()) < 5:  # too short to be a sentence
                     continue
@@ -189,17 +207,42 @@ def conversation(rows, minlen=40):
     return out
 
 
+def normalize_path(p):
+    return re.sub(r"[\\/]+", "/", p).lower().rstrip("/")
+
+
+# set by distill.py from config.toml's project_dirs (os.pathsep-joined)
+PROJECT_DIRS = [
+    normalize_path(p)
+    for p in os.environ.get("DISTILL_PROJECT_DIRS", "").split(os.pathsep)
+    if p
+]
+
+
+def is_workspace_path(path):
+    if PROJECT_DIRS:
+        norm = normalize_path(path)
+        return any(norm == d or norm.startswith(d + "/") for d in PROJECT_DIRS)
+    return not any(k in path for k in TOOLING_PATH_MARKERS)
+
+
 def workspace(rows):
     for idx, st, status, payload, render, task in rows:
         for blob in (payload, task, render):
             if blob:
                 for c in runs(blob, 8):
-                    m = re.search(r"[a-zA-Z]:[\\/][\w\\/ .\-]+", c)
-                    if m and any(
-                        k in m.group(0) for k in ("Program", "data", "Obsidian")
-                    ):
+                    m = ABS_PATH.search(c)
+                    if m and is_workspace_path(m.group(0)):
                         return m.group(0)
     return "?"
+
+
+def created(path):
+    """File creation time. getctime is creation only on Windows; on POSIX it is
+    the last metadata change, so prefer st_birthtime (macOS) when present."""
+    st = os.stat(path)
+    # ponytail: Linux has no birthtime -> falls back to ctime (metadata change)
+    return getattr(st, "st_birthtime", st.st_ctime)
 
 
 ACTIVE_BUFFER_SEC = 900  # a DB modified within this window is treated as a live session
@@ -237,7 +280,7 @@ def main():
             # Attribute to the day the session STARTED (file creation), not last
             # write, so a session spanning midnight lands on the day its work began.
             # ponytail: ctime is the best proxy — the schema has no per-step timestamp.
-            ct = datetime.datetime.fromtimestamp(os.path.getctime(db))
+            ct = datetime.datetime.fromtimestamp(created(db))
             if ct.date() != day:
                 continue
         if until is not None and mt > until:

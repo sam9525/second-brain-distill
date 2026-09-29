@@ -1,0 +1,13 @@
+Rebuild the daily note for $date from the conversations below. Both extractors have ALREADY been run for you and their output is included verbatim below — do NOT re-run them and do NOT read raw transcripts.
+
+=== Claude Code sessions ($date) ===
+$claude_out
+=== end Claude Code sessions ===
+
+=== Antigravity sessions ($date) ===
+$anti_out
+=== end Antigravity sessions ===
+
+$rules
+
+If BOTH sections above are empty or report no sessions, there is nothing to summarize: do NOT create or modify $out_file, and report "no new conversations". Otherwise summarize what I did split by project, add the Insights & Decisions section, and create or update the daily note at $out_file (append without duplicating existing bullets if it already exists).
