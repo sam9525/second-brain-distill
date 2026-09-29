@@ -16,6 +16,7 @@ if sys.version_info < (3, 11):
 import tomllib  # noqa: E402
 
 from distiller import pipeline, schedule  # noqa: E402
+from distiller.config_wizard import ensure_config  # noqa: E402
 from distiller.device import ensure_device_suffix  # noqa: E402
 from distiller.settings import ConfigError, load_settings  # noqa: E402
 
@@ -55,6 +56,7 @@ def main() -> int:
 
     args = parser.parse_args()
     try:
+        ensure_config()
         ensure_device_suffix()
         settings = load_settings()
     except (ConfigError, tomllib.TOMLDecodeError) as err:

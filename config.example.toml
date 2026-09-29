@@ -1,4 +1,6 @@
-# Copy to config.toml and edit. config.toml is gitignored.
+# Reference for config.toml. The first interactive run of distill.py creates
+# config.toml for you; or copy this file to config.toml and edit it by hand.
+# config.toml is gitignored.
 
 # Obsidian vault that daily notes are written into. `claude` runs with this as
 # its working directory, so the paths in config/run-prompt.txt are relative to it.

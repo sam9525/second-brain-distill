@@ -6,6 +6,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = REPO_ROOT / "config.toml"
 SUFFIX_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
+SCHEDULE_TIME_PATTERN = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 
 
 class ConfigError(Exception):
@@ -29,8 +30,8 @@ class Settings:
 def load_settings(path: Path = CONFIG_FILE) -> Settings:
     if not path.exists():
         raise ConfigError(
-            f"{path.name} not found - copy config.example.toml to config.toml "
-            "and set your vault path."
+            f"{path.name} not found - run `python distill.py install-schedule` "
+            "in a terminal to create it, or copy config.example.toml."
         )
     with path.open("rb") as fh:
         raw = tomllib.load(fh)
@@ -42,7 +43,7 @@ def load_settings(path: Path = CONFIG_FILE) -> Settings:
         raise ConfigError(f"{path.name}: vault folder does not exist: {vault}")
 
     schedule_time = raw.get("schedule_time", "23:50")
-    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", schedule_time):
+    if not SCHEDULE_TIME_PATTERN.fullmatch(schedule_time):
         raise ConfigError(f"{path.name}: schedule_time must be HH:MM (24h).")
 
     if "device_suffix" not in raw:
