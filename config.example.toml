@@ -1,0 +1,24 @@
+# Reference for config.toml. The first interactive run of distill.py creates
+# config.toml for you; or copy this file to config.toml and edit it by hand.
+# config.toml is gitignored.
+
+# Obsidian vault that daily notes are written into. `claude` runs with this as
+# its working directory, so the paths in config/run-prompt.txt are relative to it.
+vault = "~/Documents/Obsidian"
+
+# Model passed to `claude -p --model`.
+model = "sonnet"
+
+# Daily run time (24h, local) used by `python distill.py install-schedule`.
+# Re-run install-schedule after changing it.
+schedule_time = "23:50"
+
+# Optional. Antigravity doesn't record which project a session was in, so the
+# extractor guesses from the first file path it sees, and the summary groups
+# sessions by that guess. Occasionally it lands on a test fixture or example
+# path. Listing your project folders here makes it only count paths under them.
+# Not asked by the first-run setup; add it by hand if labels look wrong.
+# project_dirs = ["~/code"]
+
+# device_suffix is added here by the first interactive run on each device;
+# don't copy it between devices.

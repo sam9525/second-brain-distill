@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 .ruff_cache/
+.pytest_cache/
 
 # Runtime state
 .ingest-watermark
@@ -23,3 +24,8 @@ CONTEXT.md
 
 # Superpowers
 .superpowers/
+
+# Per-user config and run output
+config.toml
+distill.log
+backfill/
