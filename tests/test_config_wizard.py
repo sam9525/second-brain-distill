@@ -19,21 +19,19 @@ def scripted(*answers: str):
 
 def test_wizard_writes_config_that_load_settings_accepts(tmp_path, monkeypatch):
     vault = tmp_path / "My Vault"
-    projects = tmp_path / "code"
     vault.mkdir()
-    projects.mkdir()
     config = tmp_path / "config.toml"
     monkeypatch.setattr(sys, "stdin", FakeTty())
 
     # vault is typed as a dragged-in quoted path; defaults accepted for the rest
-    config_wizard.ensure_config(config, scripted(f'"{vault}"', str(projects), "", ""))
+    config_wizard.ensure_config(config, scripted(f'"{vault}"', "", ""))
     config.write_text(
         config.read_text(encoding="utf-8") + 'device_suffix = ""\n', encoding="utf-8"
     )
 
     settings = load_settings(config)
     assert settings.vault == vault
-    assert settings.project_dirs == (str(projects),)
+    assert settings.project_dirs == ()
     assert settings.model == "sonnet"
     assert settings.schedule_time == "23:50"
 
@@ -45,8 +43,6 @@ def test_wizard_reasks_until_answers_are_valid(tmp_path, monkeypatch):
         "",  # empty vault
         str(tmp_path / "missing"),  # vault that doesn't exist
         str(tmp_path),
-        str(tmp_path / "nope"),  # project dir that doesn't exist
-        "",  # skip project dirs
         "opus",
         "7pm",  # bad time
         "19:00",
@@ -55,7 +51,7 @@ def test_wizard_reasks_until_answers_are_valid(tmp_path, monkeypatch):
     config_wizard.ensure_config(config, answers)
 
     text = config.read_text(encoding="utf-8")
-    assert "project_dirs = []" in text
+    assert "project_dirs" not in text
     assert 'model = "opus"' in text
     assert 'schedule_time = "19:00"' in text
 

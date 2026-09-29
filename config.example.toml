@@ -13,9 +13,12 @@ model = "sonnet"
 # Re-run install-schedule after changing it.
 schedule_time = "23:50"
 
-# Folders where you keep projects. Antigravity sessions are labelled with the
-# first path under one of these. Leave empty to use the first non-tooling path.
-project_dirs = ["~/code"]
+# Optional. Antigravity doesn't record which project a session was in, so the
+# extractor guesses from the first file path it sees, and the summary groups
+# sessions by that guess. Occasionally it lands on a test fixture or example
+# path. Listing your project folders here makes it only count paths under them.
+# Not asked by the first-run setup; add it by hand if labels look wrong.
+# project_dirs = ["~/code"]
 
 # device_suffix is added here by the first interactive run on each device;
 # don't copy it between devices.

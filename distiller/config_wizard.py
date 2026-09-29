@@ -21,21 +21,6 @@ def ask_vault(ask: Ask) -> str:
         print(f"  Not an existing folder: {vault or '(empty)'}")
 
 
-def ask_project_dirs(ask: Ask) -> list[str]:
-    while True:
-        answer = ask(
-            "Folders where you keep your projects, comma-separated; used to "
-            "label Antigravity sessions (Enter to skip): "
-        )
-        # ponytail: comma-split, so a folder name containing a comma can't be
-        # entered here; edit config.toml by hand for that
-        dirs = [clean(d) for d in answer.split(",") if clean(d)]
-        missing = [d for d in dirs if not Path(d).expanduser().is_dir()]
-        if not missing:
-            return dirs
-        print(f"  Not an existing folder: {', '.join(missing)}")
-
-
 def ask_model(ask: Ask) -> str:
     return clean(ask("Claude model for summaries [sonnet]: ")) or "sonnet"
 
@@ -63,18 +48,17 @@ def ensure_config(path: Path = CONFIG_FILE, ask: Ask = input) -> None:
 
     print(f"No {path.name} yet - answer a few questions to create it.\n")
     vault = ask_vault(ask)
-    project_dirs = ask_project_dirs(ask)
     model = ask_model(ask)
     schedule_time = ask_schedule_time(ask)
 
-    dirs = ", ".join(toml_string(d) for d in project_dirs)
+    # project_dirs is left out on purpose: it only sharpens Antigravity's
+    # project labels, and config.example.toml explains it for those who want it
     path.write_text(
         "# Created by the first-run setup; edit freely. "
         "See config.example.toml for what each key does.\n"
         f"vault = {toml_string(vault)}\n"
         f"model = {toml_string(model)}\n"
-        f"schedule_time = {toml_string(schedule_time)}\n"
-        f"project_dirs = [{dirs}]\n",
+        f"schedule_time = {toml_string(schedule_time)}\n",
         encoding="utf-8",
     )
     print(f"\nSaved {path}.\n")
