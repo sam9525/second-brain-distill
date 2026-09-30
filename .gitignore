@@ -28,4 +28,3 @@ CONTEXT.md
 # Per-user config and run output
 config.toml
 distill.log
-backfill/
