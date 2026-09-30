@@ -11,7 +11,6 @@ from distiller.settings import REPO_ROOT, Settings
 SCRIPTS_DIR = REPO_ROOT / "distiller"
 CONFIG_DIR = REPO_ROOT / "config"
 WATERMARK_FILE = REPO_ROOT / ".ingest-watermark"
-BACKFILL_DIR = REPO_ROOT / "backfill"
 SENTINEL = "INGEST_COMPLETE"
 # Both extractors get the SAME lookback, and it MUST cover their active-file window
 # (ACTIVE_BUFFER_SEC=900s): a session still live at the previous run was deferred
@@ -185,20 +184,20 @@ def read_watermark(now: dt.datetime) -> dt.datetime:
     return start
 
 
-def run(
+def ingest(
     settings: Settings,
-    since: dt.datetime | None = None,
-    until: dt.datetime | None = None,
-) -> int:
-    now = dt.datetime.now().replace(microsecond=0)
-    end = until or now
-    date = end.date().isoformat()
-    window_start = since or read_watermark(now)
-    if not pull_vault(settings):
-        print("Vault pull failed - ingest skipped; watermark NOT advanced.")
-        return 1
+    date: str,
+    claude_args: list[str],
+    anti_args: list[str],
+    window: str,
+) -> bool:
+    """Pull the vault, summarize the window into the daily note, ingest, push.
 
-    claude_args, anti_args = extractor_args(window_start, until)
+    True only when ingest finished (sentinel seen) and the vault synced."""
+    if not pull_vault(settings):
+        print("Vault pull failed - ingest skipped.")
+        return False
+
     claude_out = extract("claude_sessions.py", claude_args, settings)
     anti_out = extract("antigravity_sessions.py", anti_args, settings)
     print(
@@ -213,56 +212,48 @@ def run(
         claude_out=claude_out,
         anti_out=anti_out,
     )
-    print(f"Daily note task - {date} (since {local_iso(window_start)})")
+    print(f"Daily note task - {date} ({window})")
     exit_code, saw_sentinel = call_claude(prompt, settings)
 
     # Exit 0 alone is not enough: a run once exited 0 after writing the daily note
     # but never reached ingest, and the watermark advanced past the skipped work.
     if exit_code == 0 and saw_sentinel:
-        if not sync_vault(settings, date):
-            print("Vault git sync failed - watermark NOT advanced.")
-            return 1
-        WATERMARK_FILE.write_text(local_iso(end), encoding="ascii")
-        print(f"Watermark advanced to {local_iso(end)}.")
-        return 0
-    if exit_code == 0:
+        if sync_vault(settings, date):
+            return True
+        print("Vault git sync failed.")
+    elif exit_code == 0:
         print(
-            f"Claude exited 0 but never printed {SENTINEL} - ingest likely "
-            "incomplete; watermark NOT advanced."
+            f"Claude exited 0 but never printed {SENTINEL} - ingest likely incomplete."
         )
     else:
-        print(
-            f"Ingest exited {exit_code} - watermark NOT advanced; "
-            "this range retries next run."
-        )
-    return 1
+        print(f"Ingest exited {exit_code}.")
+    return False
+
+
+def run(
+    settings: Settings,
+    since: dt.datetime | None = None,
+    until: dt.datetime | None = None,
+) -> int:
+    now = dt.datetime.now().replace(microsecond=0)
+    end = until or now
+    window_start = since or read_watermark(now)
+    claude_args, anti_args = extractor_args(window_start, until)
+    window = f"since {local_iso(window_start)}"
+    if not ingest(settings, end.date().isoformat(), claude_args, anti_args, window):
+        print("Watermark NOT advanced; this range retries next run.")
+        return 1
+    WATERMARK_FILE.write_text(local_iso(end), encoding="ascii")
+    print(f"Watermark advanced to {local_iso(end)}.")
+    return 0
 
 
 def backfill(settings: Settings, dates: list[dt.date]) -> int:
-    """Rebuild old daily notes into backfill/ for review.
+    """Run the normal pull/summarize/ingest/push for each whole past day.
 
-    Promote approved notes to the vault's memory/Inbox/, NOT memory/raw/: a note
-    dropped straight into raw/ bypasses ingest and never reaches wiki/."""
-    BACKFILL_DIR.mkdir(exist_ok=True)
+    The watermark is left alone: it tracks the incremental run, not these days."""
     failures = 0
     for day in dates:
         date = day.isoformat()
-        claude_out = extract("claude_sessions.py", [date], settings)
-        anti_out = extract("antigravity_sessions.py", [date], settings)
-        print(f"{date}: claude={len(claude_out)}c antigravity={len(anti_out)}c")
-        prompt = render(
-            "backfill-prompt.txt",
-            date=date,
-            claude_out=claude_out,
-            anti_out=anti_out,
-            out_file=str(BACKFILL_DIR / f"{settings.note_name(date)}.md"),
-        )
-        print(f"Summarizing {date} ...")
-        exit_code, _ = call_claude(prompt, settings)
-        failures += exit_code != 0
-
-    print(
-        f"\nDone. Review {BACKFILL_DIR}, then copy approved notes into the vault's "
-        "memory/Inbox/ - NOT memory/raw/."
-    )
+        failures += not ingest(settings, date, [date], [date], "backfill")
     return 1 if failures else 0

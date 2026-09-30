@@ -24,7 +24,6 @@ Needs Python 3.11+ and the [`claude` CLI](https://docs.claude.com/en/docs/claude
 1. Adapt the prompts in `config/` to your vault. They use `$name` placeholders filled in at run time.
    - `run-prompt.txt`: where the daily note goes and how each vault folder is ingested. Keep the `INGEST_COMPLETE` instruction: the watermark only advances when Claude prints it.
    - `summary-rules.txt`: the note's format. Replace the project tag vocabulary with your own projects.
-   - `backfill-prompt.txt`: the same, for rebuilding past days.
 2. Run `python distill.py install-schedule` in a terminal. On first run it creates `config.toml` by asking for your vault folder, model and daily run time (press Enter to accept a default). Then it registers the daily run: Task Scheduler on Windows, launchd on macOS. Output goes to `distill.log`.
 
    Last, it asks whether this is your main device. The main device names daily notes by date only (`2026-09-29.md`). Every other device adds a suffix (`2026-09-29-Mac.md`), so devices sharing a git-synced vault never write the same file. The suggested suffix is `Mac` or `Windows`; type your own on a second device of the same kind.
@@ -61,14 +60,14 @@ This is what the scheduler calls every night. It covers the sessions between the
 - Exit code 0 means ingested, 1 means Claude failed or never printed `INGEST_COMPLETE` (the range is retried next run), and 2 means `config.toml` is missing or invalid.
 - Claude runs with `--dangerously-skip-permissions` in your vault, so it can edit any file there without asking. Keep the vault in git.
 
-### `backfill`: rebuild past days for review
+### `backfill`: run specific past days
 
 ```
 python distill.py backfill 2026-09-04
 python distill.py backfill 2026-09-04 2026-09-05 2026-09-06
 ```
 
-Summarizes each whole day into `backfill/<date>.md`. It doesn't touch the vault, run ingest, or move the watermark, and re-running a date updates its file. Review the notes, then move the ones you want into the vault's `memory/Inbox/` so the next `run` ingests them. Don't put them in `memory/raw/`: a note placed there skips ingest and never reaches the wiki.
+Does exactly what `run` does (pull the vault, write the daily note, ingest, commit and push) once per date, covering that whole day. It never moves the watermark, so the nightly run is unaffected. Exit code 1 if any date failed; re-running a date appends to its note without duplicating bullets.
 
 ## Development
 

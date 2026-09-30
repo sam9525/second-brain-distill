@@ -209,15 +209,34 @@ def test_run_prompt_template_fills_every_placeholder():
     assert pipeline.SENTINEL in prompt
 
 
-def test_backfill_prompt_template_fills_every_placeholder():
-    prompt = pipeline.render(
-        "backfill-prompt.txt",
-        date="2026-09-04",
-        claude_out="",
-        anti_out="",
-        out_file="/tmp/backfill/2026-09-04.md",
+def test_backfill_ingests_each_date_and_leaves_watermark(tmp_path, monkeypatch):
+    watermark = tmp_path / ".ingest-watermark"
+    watermark.write_text("2026-09-28T23:50:00")
+    monkeypatch.setattr(pipeline, "WATERMARK_FILE", watermark)
+    monkeypatch.setattr(pipeline, "pull_vault", lambda *a: True)
+    monkeypatch.setattr(pipeline, "call_claude", lambda *a: (0, True))
+    extracted: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline, "extract", lambda s, args, st: extracted.append(args) or ""
     )
-    assert "/tmp/backfill/2026-09-04.md" in prompt
+    synced: list[str] = []
+    monkeypatch.setattr(
+        pipeline, "sync_vault", lambda st, date: synced.append(date) or True
+    )
+
+    days = [dt.date(2026, 9, 4), dt.date(2026, 9, 5)]
+    assert pipeline.backfill(make_settings(tmp_path), days) == 0
+    assert extracted == [["2026-09-04"]] * 2 + [["2026-09-05"]] * 2
+    assert synced == ["2026-09-04", "2026-09-05"]
+    assert watermark.read_text() == "2026-09-28T23:50:00"
+
+
+def test_backfill_fails_when_a_date_misses_the_sentinel(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "pull_vault", lambda *a: True)
+    monkeypatch.setattr(pipeline, "extract", lambda *a: "")
+    monkeypatch.setattr(pipeline, "call_claude", lambda *a: (0, False))
+    monkeypatch.setattr(pipeline, "sync_vault", lambda *a: True)
+    assert pipeline.backfill(make_settings(tmp_path), [dt.date(2026, 9, 4)]) == 1
 
 
 def test_load_settings_rejects_missing_vault(tmp_path):

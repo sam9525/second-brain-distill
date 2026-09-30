@@ -45,7 +45,8 @@ def main() -> int:
     )
 
     backfill_cmd = commands.add_parser(
-        "backfill", help="rebuild daily notes for past dates into backfill/"
+        "backfill",
+        help="run the normal ingest for whole past dates (watermark untouched)",
     )
     backfill_cmd.add_argument("dates", nargs="+", type=dt.date.fromisoformat)
 
