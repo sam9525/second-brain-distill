@@ -99,6 +99,84 @@ def call_claude(prompt: str, settings: Settings) -> tuple[int, bool]:
     return proc.wait(), saw_sentinel
 
 
+def git(settings: Settings, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=settings.vault, capture_output=True, text=True
+    )
+
+
+def on_main(settings: Settings) -> bool:
+    branch = git(settings, "branch", "--show-current")
+    if branch.stdout.strip() == "main":
+        return True
+    print(f"Vault is not on main ({branch.stdout.strip() or branch.stderr.strip()}).")
+    return False
+
+
+def vault_remote(settings: Settings) -> str | None:
+    remotes = git(settings, "remote").stdout.split()
+    if not remotes:
+        return None
+    return "origin" if "origin" in remotes else remotes[0]
+
+
+def pull_main(settings: Settings, remote: str) -> bool:
+    # rebase keeps main linear; autostash covers edits left open in Obsidian
+    pull = git(settings, "pull", "--rebase", "--autostash", remote, "main")
+    if pull.returncode == 0:
+        return True
+    git(settings, "rebase", "--abort")  # a conflict must not leave main mid-rebase
+    print(f"Vault pull from {remote} failed:\n{pull.stdout}{pull.stderr}")
+    return False
+
+
+def pull_vault(settings: Settings) -> bool:
+    """Bring the vault up to date before ingest.
+
+    Ingest rewrites wiki/index files every device shares, so ingesting into a stale
+    copy all but guarantees a conflicting push."""
+    if not on_main(settings):
+        return False
+    remote = vault_remote(settings)
+    if remote is None:
+        print("Vault: no remote configured - pull skipped.")
+        return True
+    return pull_main(settings, remote)
+
+
+def sync_vault(settings: Settings, date: str) -> bool:
+    """Commit everything in the vault on main and push main.
+
+    A vault with no remote is local-only by choice, so only the push is skipped."""
+    if not on_main(settings):
+        return False
+    git(settings, "add", "-A")
+    if git(settings, "diff", "--cached", "--quiet").returncode == 0:
+        print("Vault: nothing to commit.")
+    else:
+        commit = git(settings, "commit", "-m", f"chore: distill {date}")
+        if commit.returncode != 0:
+            print(f"Vault commit failed:\n{commit.stdout}{commit.stderr}")
+            return False
+        print(f"Vault: committed chore: distill {date}.")
+    remote = vault_remote(settings)
+    if remote is None:
+        print("Vault: no remote configured - push skipped.")
+        return True
+    # still pushes on "nothing to commit": a previous run's push may have failed
+    push = git(settings, "push", remote, "main")
+    if push.returncode != 0:
+        # another device may have pushed during the ingest: rebase onto it once
+        if not pull_main(settings, remote):
+            return False
+        push = git(settings, "push", remote, "main")
+    if push.returncode != 0:
+        print(f"Vault push to {remote} failed:\n{push.stderr}")
+        return False
+    print(f"Vault: pushed main to {remote}.")
+    return True
+
+
 def read_watermark(now: dt.datetime) -> dt.datetime:
     if WATERMARK_FILE.exists():
         return dt.datetime.fromisoformat(WATERMARK_FILE.read_text().strip())
@@ -116,6 +194,9 @@ def run(
     end = until or now
     date = end.date().isoformat()
     window_start = since or read_watermark(now)
+    if not pull_vault(settings):
+        print("Vault pull failed - ingest skipped; watermark NOT advanced.")
+        return 1
 
     claude_args, anti_args = extractor_args(window_start, until)
     claude_out = extract("claude_sessions.py", claude_args, settings)
@@ -138,6 +219,9 @@ def run(
     # Exit 0 alone is not enough: a run once exited 0 after writing the daily note
     # but never reached ingest, and the watermark advanced past the skipped work.
     if exit_code == 0 and saw_sentinel:
+        if not sync_vault(settings, date):
+            print("Vault git sync failed - watermark NOT advanced.")
+            return 1
         WATERMARK_FILE.write_text(local_iso(end), encoding="ascii")
         print(f"Watermark advanced to {local_iso(end)}.")
         return 0
