@@ -60,6 +60,106 @@ def test_watermark_advances_only_on_clean_exit_with_sentinel(
     assert watermark.read_text() == expected
 
 
+def fake_ingest(monkeypatch, tmp_path, watermark_text, now, fail_dates=()):
+    """Stub the run around ingest; return the (date, claude_args) of each ingest."""
+    watermark = tmp_path / ".ingest-watermark"
+    watermark.write_text(watermark_text)
+    monkeypatch.setattr(pipeline, "WATERMARK_FILE", watermark)
+    monkeypatch.setattr(pipeline, "now_local", lambda: now)
+    calls: list[tuple[str, list[str]]] = []
+
+    def ingest(settings, date, claude_args, anti_args, window):
+        calls.append((date, anti_args))
+        return date not in fail_dates
+
+    monkeypatch.setattr(pipeline, "ingest", ingest)
+    return watermark, calls
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        dt.datetime(2026, 10, 12, 8, 30),  # Mac opened the morning after a miss
+        dt.datetime(2026, 10, 13, 0, 30),  # woke 40 min after 23:50
+    ],
+)
+def test_scheduled_run_fired_late_on_wake_does_nothing(tmp_path, monkeypatch, now):
+    watermark, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-10T23:50:00", now)
+
+    assert pipeline.run(make_settings(tmp_path), scheduled=True) == 0
+    assert calls == []
+    assert watermark.read_text() == "2026-10-10T23:50:00"
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        dt.datetime(2026, 10, 12, 23, 50),
+        dt.datetime(2026, 10, 12, 23, 59),  # launchd started a few minutes late
+        dt.datetime(2026, 10, 13, 0, 10),  # within grace, past midnight
+    ],
+)
+def test_scheduled_run_on_time_proceeds(tmp_path, monkeypatch, now):
+    _, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-11T23:50:00", now)
+    assert pipeline.run(make_settings(tmp_path), scheduled=True) == 0
+    assert calls
+
+
+def test_manual_run_ignores_schedule_grace(tmp_path, monkeypatch):
+    now = dt.datetime(2026, 10, 12, 8, 30)
+    _, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-11T23:50:00", now)
+    assert pipeline.run(make_settings(tmp_path)) == 0
+    assert [date for date, _ in calls] == ["2026-10-12"]
+
+
+def test_missed_nights_get_one_note_per_date(tmp_path, monkeypatch):
+    now = dt.datetime(2026, 10, 12, 23, 50)
+    watermark, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-10T23:50:00", now)
+
+    assert pipeline.run(make_settings(tmp_path), scheduled=True) == 0
+    assert calls == [
+        ("2026-10-11", ["since:2026-10-10T23:35:00", "until:2026-10-11T23:50:00"]),
+        ("2026-10-12", ["since:2026-10-11T23:35:00"]),
+    ]
+    assert watermark.read_text() == "2026-10-12T23:50:00"
+
+
+def test_failed_day_keeps_earlier_days_and_retries_the_rest(tmp_path, monkeypatch):
+    now = dt.datetime(2026, 10, 13, 23, 50)
+    watermark, calls = fake_ingest(
+        monkeypatch, tmp_path, "2026-10-10T23:50:00", now, fail_dates={"2026-10-12"}
+    )
+
+    assert pipeline.run(make_settings(tmp_path), scheduled=True) == 1
+    assert [date for date, _ in calls] == ["2026-10-11", "2026-10-12"]
+    assert watermark.read_text() == "2026-10-11T23:50:00"
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "cuts"),
+    [
+        # normal night: one piece, no cut at today's 23:50 (end's own date)
+        ("2026-10-11T23:50", "2026-10-12T23:52", []),
+        # mid-day manual run before, then two missed nights
+        (
+            "2026-10-10T14:00",
+            "2026-10-12T23:50",
+            ["2026-10-10T23:50", "2026-10-11T23:50"],
+        ),
+        # start already past that day's slot: no cut on the start date
+        ("2026-10-10T23:55", "2026-10-11T23:50", []),
+    ],
+)
+def test_split_by_day_cuts_at_each_missed_schedule_time(start, end, cuts):
+    pieces = pipeline.split_by_day(
+        dt.datetime.fromisoformat(start), dt.datetime.fromisoformat(end), "23:50"
+    )
+    assert [p[1].isoformat(timespec="minutes") for p in pieces[:-1]] == cuts
+    assert pieces[0][0].isoformat(timespec="minutes") == start
+    assert pieces[-1][1].isoformat(timespec="minutes") == end
+    assert all(a[1] == b[0] for a, b in zip(pieces, pieces[1:]))
+
+
 def test_watermark_holds_when_vault_sync_fails(tmp_path, monkeypatch):
     watermark = tmp_path / ".ingest-watermark"
     watermark.write_text("2026-09-28T23:50:00")
