@@ -12,6 +12,10 @@ from distiller.settings import REPO_ROOT, Settings
 TASK_NAME = "second-brain-distill"
 LAUNCHD_LABEL = "com.second-brain-distill.daily"
 LOG_FILE = REPO_ROOT / "distill.log"
+# launchd works out StartCalendarInterval in the timezone it loaded at boot, so after
+# the computer's timezone changes it fires at the wrong local time. Instead it polls
+# and `run --scheduled` decides from the current local clock.
+LAUNCHD_POLL_SECONDS = 300
 ENTRY_POINT = REPO_ROOT / "distill.py"
 
 # StartWhenAvailable false: a run missed while the PC was off/asleep is NOT fired
@@ -95,10 +99,10 @@ def install_macos(hour: int, minute: int) -> str:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
     plist = {
         "Label": LAUNCHD_LABEL,
-        # launchd fires a StartCalendarInterval job missed during sleep on wake and
-        # has no key to stop it; --scheduled makes that late start a no-op
+        # --scheduled runs only in the window after schedule_time, once per night,
+        # so the other ticks (and catch-up ticks on wake) are no-ops
         "ProgramArguments": [sys.executable, str(ENTRY_POINT), "run", "--scheduled"],
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "StartInterval": LAUNCHD_POLL_SECONDS,
         "WorkingDirectory": str(REPO_ROOT),
         "StandardOutPath": str(LOG_FILE),
         "StandardErrorPath": str(LOG_FILE),
@@ -116,6 +120,7 @@ def install_macos(hour: int, minute: int) -> str:
     )
     subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], check=True)
     return (
-        f"launchd job '{LAUNCHD_LABEL}' runs daily at {hour:02d}:{minute:02d}; "
+        f"launchd job '{LAUNCHD_LABEL}' runs daily at {hour:02d}:{minute:02d} "
+        f"local time (checked every {LAUNCHD_POLL_SECONDS // 60} min); "
         f"output appends to {LOG_FILE}."
     )

@@ -23,4 +23,7 @@ def test_launchd_job_runs_in_scheduled_mode(tmp_path, monkeypatch):
     with plist_path.open("rb") as fh:
         plist = plistlib.load(fh)
     assert plist["ProgramArguments"][-2:] == ["run", "--scheduled"]
-    assert plist["StartCalendarInterval"] == {"Hour": 23, "Minute": 50}
+    # polls instead of StartCalendarInterval, which launchd evaluates in a stale
+    # timezone after the computer's timezone changes
+    assert "StartCalendarInterval" not in plist
+    assert plist["StartInterval"] == schedule.LAUNCHD_POLL_SECONDS

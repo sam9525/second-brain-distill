@@ -66,6 +66,9 @@ def fake_ingest(monkeypatch, tmp_path, watermark_text, now, fail_dates=()):
     watermark.write_text(watermark_text)
     monkeypatch.setattr(pipeline, "WATERMARK_FILE", watermark)
     monkeypatch.setattr(pipeline, "now_local", lambda: now)
+    monkeypatch.setattr(
+        pipeline, "SCHEDULED_SLOT_FILE", tmp_path / ".last-scheduled-slot"
+    )
     calls: list[tuple[str, list[str]]] = []
 
     def ingest(settings, date, claude_args, anti_args, window):
@@ -103,6 +106,22 @@ def test_scheduled_run_on_time_proceeds(tmp_path, monkeypatch, now):
     _, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-11T23:50:00", now)
     assert pipeline.run(make_settings(tmp_path), scheduled=True) == 0
     assert calls
+
+
+def test_scheduled_run_happens_once_per_night(tmp_path, monkeypatch):
+    now = dt.datetime(2026, 10, 12, 23, 50)
+    _, calls = fake_ingest(monkeypatch, tmp_path, "2026-10-11T23:50:00", now)
+    settings = make_settings(tmp_path)
+
+    assert pipeline.run(settings, scheduled=True) == 0
+    monkeypatch.setattr(pipeline, "now_local", lambda: now + dt.timedelta(minutes=10))
+    assert pipeline.run(settings, scheduled=True) == 0
+    assert len(calls) == 1
+
+    next_night = dt.datetime(2026, 10, 13, 23, 55)
+    monkeypatch.setattr(pipeline, "now_local", lambda: next_night)
+    assert pipeline.run(settings, scheduled=True) == 0
+    assert len(calls) == 2
 
 
 def test_manual_run_ignores_schedule_grace(tmp_path, monkeypatch):

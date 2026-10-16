@@ -46,7 +46,7 @@ def main() -> int:
     run_cmd.add_argument(
         "--scheduled",
         action="store_true",
-        help="set by the scheduler: skip when fired late, e.g. on wake",
+        help="set by the scheduler: run once, only just after schedule_time",
     )
 
     backfill_cmd = commands.add_parser(

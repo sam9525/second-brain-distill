@@ -11,14 +11,17 @@ from distiller.settings import REPO_ROOT, Settings
 SCRIPTS_DIR = REPO_ROOT / "distiller"
 CONFIG_DIR = REPO_ROOT / "config"
 WATERMARK_FILE = REPO_ROOT / ".ingest-watermark"
+# The schedule slot (local schedule_time) the last scheduled run started for, so the
+# launchd poll runs once per night however many ticks land inside the grace window.
+SCHEDULED_SLOT_FILE = REPO_ROOT / ".last-scheduled-slot"
 SENTINEL = "INGEST_COMPLETE"
 # Both extractors get the SAME lookback, and it MUST cover their active-file window
 # (ACTIVE_BUFFER_SEC=900s): a session still live at the previous run was deferred
 # then, so this run must reach back far enough to re-read it whole.
 LOOKBACK = dt.timedelta(minutes=15)
-# A scheduled run starting later than this after schedule_time is a launchd catch-up
-# for a run missed while the machine slept; it is skipped, and the next on-time run
-# covers the missed days (one note per day).
+# A scheduled run only proceeds within this long after schedule_time, in the
+# computer's current timezone. Later (e.g. the machine slept through it) it is
+# skipped, and the next on-time run covers the missed days (one note per day).
 SCHEDULE_GRACE = dt.timedelta(minutes=30)
 
 
@@ -245,6 +248,22 @@ def last_scheduled(schedule_time: str, now: dt.datetime) -> dt.datetime:
     return slot if slot <= now else slot - dt.timedelta(days=1)
 
 
+def claim_scheduled_slot(schedule_time: str, now: dt.datetime) -> bool:
+    """Whether a scheduled tick should run now; records the slot when it should.
+
+    Silent on refusal: launchd polls every few minutes, so most ticks refuse."""
+    slot = last_scheduled(schedule_time, now)
+    if now - slot > SCHEDULE_GRACE:
+        return False
+    if (
+        SCHEDULED_SLOT_FILE.exists()
+        and SCHEDULED_SLOT_FILE.read_text().strip() == local_iso(slot)
+    ):
+        return False
+    SCHEDULED_SLOT_FILE.write_text(local_iso(slot), encoding="ascii")
+    return True
+
+
 def split_by_day(
     start: dt.datetime, end: dt.datetime, schedule_time: str
 ) -> list[tuple[dt.datetime, dt.datetime]]:
@@ -272,11 +291,7 @@ def run(
     scheduled: bool = False,
 ) -> int:
     now = now_local()
-    if scheduled and now - last_scheduled(settings.schedule_time, now) > SCHEDULE_GRACE:
-        print(
-            f"{local_iso(now)}: missed run fired late (e.g. on wake) - skipped; "
-            f"the next {settings.schedule_time} run covers the missed days."
-        )
+    if scheduled and not claim_scheduled_slot(settings.schedule_time, now):
         return 0
     end = until or now
     window_start = since or read_watermark(now)

@@ -45,7 +45,9 @@ Registers a daily `run` at `schedule_time`, with output appended to `distill.log
 - Windows: Task Scheduler task `second-brain-distill`, run as the logged-in user.
 - macOS: launchd agent `com.second-brain-distill.daily`.
 
-A run missed while the machine was off or asleep is not started when it wakes. The scheduler calls `run --scheduled`, which does nothing if it starts more than 30 minutes after `schedule_time` (launchd starts missed jobs on wake and can't be told not to). The next on-time run then catches up, writing one note per missed date. If you installed the schedule before this change, re-run `install-schedule`.
+A run missed while the machine was off or asleep is not started when it wakes. The scheduler calls `run --scheduled`, which does nothing if it starts more than 30 minutes after `schedule_time`. The next on-time run then catches up, writing one note per missed date. If you installed the schedule before this change, re-run `install-schedule`.
+
+On macOS the agent starts `run --scheduled` every 5 minutes rather than at a fixed time, because launchd keeps using the old timezone after the computer's timezone changes (e.g. travelling) until you restart. The script checks the computer's current clock and runs once per night, in the 30 minutes after `schedule_time`; every other start exits immediately without logging.
 - Other systems: it prints a cron line for you to add yourself.
 
 ### `run`: summarize and ingest
