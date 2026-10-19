@@ -42,8 +42,12 @@ python distill.py install-schedule
 
 Registers a daily `run` at `schedule_time`, with output appended to `distill.log`. Re-running it replaces the existing schedule.
 
-- Windows: Task Scheduler task `second-brain-distill`. It runs as the logged-in user, and a run missed while the PC was off fires at the next wake.
+- Windows: Task Scheduler task `second-brain-distill`, run as the logged-in user.
 - macOS: launchd agent `com.second-brain-distill.daily`.
+
+A run missed while the machine was off or asleep is not started when it wakes. The scheduler calls `run --scheduled`, which does nothing if it starts more than 30 minutes after `schedule_time`. The next on-time run then catches up, writing one note per missed date. If you installed the schedule before this change, re-run `install-schedule`.
+
+On macOS the agent starts `run --scheduled` every 5 minutes rather than at a fixed time, because launchd keeps using the old timezone after the computer's timezone changes (e.g. travelling) until you restart. The script checks the computer's current clock and runs once per night, in the 30 minutes after `schedule_time`; every other start exits immediately without logging.
 - Other systems: it prints a cron line for you to add yourself.
 
 ### `run`: summarize and ingest
@@ -54,6 +58,8 @@ python distill.py run --since 2026-09-28T09:00 --until 2026-09-28T18:00
 ```
 
 This is what the scheduler calls every night. It covers the sessions between the watermark and now, writes `memory/Inbox/<date>.md` (dated by the end of the window), then ingests the vault. The watermark only moves forward when the run succeeds.
+
+If the window spans missed nights, it is cut at each missed day's `schedule_time` and each piece is ingested as its own dated note, oldest first, exactly as that night's run would have done. The watermark advances after each day, so a failure keeps the days already done and retries the rest next run.
 
 - With no watermark yet (first run), it covers the last 24 hours.
 - `--since` / `--until` take local ISO times and override the window. `--since` replaces the watermark as the start. On success the watermark moves to the end of the window, even an `--until` in the past, so the next nightly run starts from there.

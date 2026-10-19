@@ -43,6 +43,11 @@ def main() -> int:
         type=dt.datetime.fromisoformat,
         help="local ISO time to stop at (default: now)",
     )
+    run_cmd.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="set by the scheduler: run once, only just after schedule_time",
+    )
 
     backfill_cmd = commands.add_parser(
         "backfill",
@@ -65,7 +70,7 @@ def main() -> int:
         return 2
 
     if args.command == "run":
-        return pipeline.run(settings, args.since, args.until)
+        return pipeline.run(settings, args.since, args.until, args.scheduled)
     if args.command == "backfill":
         return pipeline.backfill(settings, args.dates)
     print(schedule.install(settings))

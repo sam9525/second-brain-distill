@@ -11,11 +11,18 @@ from distiller.settings import REPO_ROOT, Settings
 SCRIPTS_DIR = REPO_ROOT / "distiller"
 CONFIG_DIR = REPO_ROOT / "config"
 WATERMARK_FILE = REPO_ROOT / ".ingest-watermark"
+# The schedule slot (local schedule_time) the last scheduled run started for, so the
+# launchd poll runs once per night however many ticks land inside the grace window.
+SCHEDULED_SLOT_FILE = REPO_ROOT / ".last-scheduled-slot"
 SENTINEL = "INGEST_COMPLETE"
 # Both extractors get the SAME lookback, and it MUST cover their active-file window
 # (ACTIVE_BUFFER_SEC=900s): a session still live at the previous run was deferred
 # then, so this run must reach back far enough to re-read it whole.
 LOOKBACK = dt.timedelta(minutes=15)
+# A scheduled run only proceeds within this long after schedule_time, in the
+# computer's current timezone. Later (e.g. the machine slept through it) it is
+# skipped, and the next on-time run covers the missed days (one note per day).
+SCHEDULE_GRACE = dt.timedelta(minutes=30)
 
 
 def utc_iso(local: dt.datetime) -> str:
@@ -230,21 +237,77 @@ def ingest(
     return False
 
 
+def now_local() -> dt.datetime:
+    return dt.datetime.now().replace(microsecond=0)
+
+
+def last_scheduled(schedule_time: str, now: dt.datetime) -> dt.datetime:
+    """The most recent daily schedule_time at or before now."""
+    hour, minute = (int(part) for part in schedule_time.split(":"))
+    slot = dt.datetime.combine(now.date(), dt.time(hour, minute))
+    return slot if slot <= now else slot - dt.timedelta(days=1)
+
+
+def claim_scheduled_slot(schedule_time: str, now: dt.datetime) -> bool:
+    """Whether a scheduled tick should run now; records the slot when it should.
+
+    Silent on refusal: launchd polls every few minutes, so most ticks refuse."""
+    slot = last_scheduled(schedule_time, now)
+    if now - slot > SCHEDULE_GRACE:
+        return False
+    if (
+        SCHEDULED_SLOT_FILE.exists()
+        and SCHEDULED_SLOT_FILE.read_text().strip() == local_iso(slot)
+    ):
+        return False
+    SCHEDULED_SLOT_FILE.write_text(local_iso(slot), encoding="ascii")
+    return True
+
+
+def split_by_day(
+    start: dt.datetime, end: dt.datetime, schedule_time: str
+) -> list[tuple[dt.datetime, dt.datetime]]:
+    """Cut [start, end) at each day's schedule_time before end's date.
+
+    Each piece is what that night's run would have covered, so a window spanning
+    missed nights yields one piece (one daily note) per date, dated by its end."""
+    hour, minute = (int(part) for part in schedule_time.split(":"))
+    pieces = []
+    day = start.date()
+    while day < end.date():
+        cut = dt.datetime.combine(day, dt.time(hour, minute))
+        if cut > start:
+            pieces.append((start, cut))
+            start = cut
+        day += dt.timedelta(days=1)
+    pieces.append((start, end))
+    return pieces
+
+
 def run(
     settings: Settings,
     since: dt.datetime | None = None,
     until: dt.datetime | None = None,
+    scheduled: bool = False,
 ) -> int:
-    now = dt.datetime.now().replace(microsecond=0)
+    now = now_local()
+    if scheduled and not claim_scheduled_slot(settings.schedule_time, now):
+        return 0
     end = until or now
     window_start = since or read_watermark(now)
-    claude_args, anti_args = extractor_args(window_start, until)
-    window = f"since {local_iso(window_start)}"
-    if not ingest(settings, end.date().isoformat(), claude_args, anti_args, window):
-        print("Watermark NOT advanced; this range retries next run.")
-        return 1
-    WATERMARK_FILE.write_text(local_iso(end), encoding="ascii")
-    print(f"Watermark advanced to {local_iso(end)}.")
+    for piece_start, piece_end in split_by_day(
+        window_start, end, settings.schedule_time
+    ):
+        # the final piece stays open-ended unless --until closed the window
+        piece_until = piece_end if piece_end < end or until is not None else None
+        claude_args, anti_args = extractor_args(piece_start, piece_until)
+        window = f"since {local_iso(piece_start)}"
+        date = piece_end.date().isoformat()
+        if not ingest(settings, date, claude_args, anti_args, window):
+            print("Watermark NOT advanced; this range retries next run.")
+            return 1
+        WATERMARK_FILE.write_text(local_iso(piece_end), encoding="ascii")
+        print(f"Watermark advanced to {local_iso(piece_end)}.")
     return 0
 
 

@@ -7,6 +7,7 @@ __pycache__/
 
 # Runtime state
 .ingest-watermark
+.last-scheduled-slot
 
 # GitNexus index
 .gitnexus/

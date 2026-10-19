@@ -12,9 +12,14 @@ from distiller.settings import REPO_ROOT, Settings
 TASK_NAME = "second-brain-distill"
 LAUNCHD_LABEL = "com.second-brain-distill.daily"
 LOG_FILE = REPO_ROOT / "distill.log"
+# launchd works out StartCalendarInterval in the timezone it loaded at boot, so after
+# the computer's timezone changes it fires at the wrong local time. Instead it polls
+# and `run --scheduled` decides from the current local clock.
+LAUNCHD_POLL_SECONDS = 300
 ENTRY_POINT = REPO_ROOT / "distill.py"
 
-# StartWhenAvailable: a run missed while the PC was off/asleep fires at next wake.
+# StartWhenAvailable false: a run missed while the PC was off/asleep is NOT fired
+# at wake; the next on-time run splits the missed days into their own notes.
 # InteractiveToken: runs as the logged-in user, no stored password needed.
 TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -34,7 +39,7 @@ TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
     </Principal>
   </Principals>
   <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
+    <StartWhenAvailable>false</StartWhenAvailable>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <ExecutionTimeLimit>PT4H</ExecutionTimeLimit>
@@ -58,7 +63,7 @@ def install(settings: Settings) -> str:
         return install_macos(hour, minute)
     return (
         "No scheduler installer for this OS. Add a cron entry instead:\n"
-        f'{minute} {hour} * * * "{sys.executable}" "{ENTRY_POINT}" run '
+        f'{minute} {hour} * * * "{sys.executable}" "{ENTRY_POINT}" run --scheduled '
         f'>> "{LOG_FILE}" 2>&1'
     )
 
@@ -66,7 +71,9 @@ def install(settings: Settings) -> str:
 def install_windows(hour: int, minute: int) -> str:
     start = dt.datetime.combine(dt.date.today(), dt.time(hour, minute))
     # cmd /c strips the outer quote pair, leaving each path individually quoted
-    arguments = f'/c ""{sys.executable}" "{ENTRY_POINT}" run >> "{LOG_FILE}" 2>&1"'
+    arguments = (
+        f'/c ""{sys.executable}" "{ENTRY_POINT}" run --scheduled >> "{LOG_FILE}" 2>&1"'
+    )
     xml = TASK_XML.format(
         start=start.isoformat(timespec="seconds"),
         arguments=escape(arguments),
@@ -92,9 +99,10 @@ def install_macos(hour: int, minute: int) -> str:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
     plist = {
         "Label": LAUNCHD_LABEL,
-        "ProgramArguments": [sys.executable, str(ENTRY_POINT), "run"],
-        # unlike cron, launchd runs a missed StartCalendarInterval job on wake
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        # --scheduled runs only in the window after schedule_time, once per night,
+        # so the other ticks (and catch-up ticks on wake) are no-ops
+        "ProgramArguments": [sys.executable, str(ENTRY_POINT), "run", "--scheduled"],
+        "StartInterval": LAUNCHD_POLL_SECONDS,
         "WorkingDirectory": str(REPO_ROOT),
         "StandardOutPath": str(LOG_FILE),
         "StandardErrorPath": str(LOG_FILE),
@@ -112,6 +120,7 @@ def install_macos(hour: int, minute: int) -> str:
     )
     subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], check=True)
     return (
-        f"launchd job '{LAUNCHD_LABEL}' runs daily at {hour:02d}:{minute:02d}; "
+        f"launchd job '{LAUNCHD_LABEL}' runs daily at {hour:02d}:{minute:02d} "
+        f"local time (checked every {LAUNCHD_POLL_SECONDS // 60} min); "
         f"output appends to {LOG_FILE}."
     )
